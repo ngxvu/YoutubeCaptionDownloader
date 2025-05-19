@@ -48,7 +48,7 @@ Send a POST request to /api/summarize with a JSON body:
 }
    ```
 
-### Example using curl
+### 4. Example using curl
 **Get Captions:**
 ```
 curl -X POST http://localhost:5000/api/get-caption \
