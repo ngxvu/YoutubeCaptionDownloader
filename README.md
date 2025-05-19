@@ -1,4 +1,4 @@
-# YouTube Caption Downloader API
+# ![YouTube Caption Downloader](https://img.shields.io/badge/-red?logo=youtube) YouTube Caption Downloader API
 
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue?logo=python)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.x-green?logo=flask)](https://flask.palletsprojects.com/)
