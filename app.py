@@ -1,10 +1,18 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-import tempfile
 import re
-import os
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 
 app = Flask(__name__)
+
+model_name = "facebook/bart-large-cnn"
+summarizer = pipeline("summarization", model=model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+max_input_tokens = getattr(model.config, "max_position_embeddings", None)
+if max_input_tokens is None:
+    max_input_tokens = 1024
 
 def get_video_id(url):
     regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
@@ -16,9 +24,8 @@ def get_caption():
     data = request.json
     if not data or "link" not in data:
         return jsonify({"error": "Missing 'link' in request body"}), 400
-
     link = data["link"]
-    languages = data.get("languages", ["en"])
+    languages = data.get("languages", ["vi", "en"])
 
     video_id = get_video_id(link)
     try:
@@ -31,23 +38,38 @@ def get_caption():
         return jsonify({"error": str(e)}), 500
 
     text = "\n".join([item["text"] for item in transcript])
+    return jsonify({
+        "video_id": video_id,
+        "caption": text
+    })
 
-    # Ghi ra file tạm thời
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False, encoding="utf-8", suffix=".txt") as f:
-        f.write(text)
-        temp_filename = f.name
 
-    # Trả về file txt cho client tải về
-    response = send_file(temp_filename, mimetype="text/plain", as_attachment=True, download_name=f"{video_id}_caption.txt")
-    # Xóa file tạm sau khi gửi xong
-    @response.call_on_close
-    def cleanup():
-        try:
-            os.remove(temp_filename)
-        except Exception:
-            pass
+@app.route("/api/summarize", methods=["POST"])
+def summarize():
+    data = request.json
+    if not data or "text" not in data:
+        return jsonify({"error": "Missing 'text' in request body"}), 400
 
-    return response
+    text = data["text"]
+    tokens = tokenizer.encode(text)
+    num_tokens = len(tokens)
+
+    if num_tokens > max_input_tokens:
+        return jsonify({
+            "error": f"Văn bản bạn nhập có {num_tokens} tokens, vượt quá giới hạn {max_input_tokens} tokens của model {model_name}. Hãy chia nhỏ văn bản trước khi tóm tắt."
+        }), 400
+
+    try:
+        result = summarizer(text, max_length=max_input_tokens, min_length=40, do_sample=False)
+        summary = result[0]['summary_text']
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        "summary": summary,
+        "num_tokens": num_tokens,
+        "max_input_tokens": max_input_tokens
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
